@@ -5,7 +5,7 @@ A simple full-stack task management dashboard.
 ## Tech Stack
 - Frontend: Next.js (App Router)
 - Backend: FastAPI
-- Database: SQLite (in-memory via SQLAlchemy)
+- Database: SQLite (file-based local DB via SQLAlchemy)
 
 ## Project Structure
 
@@ -61,15 +61,34 @@ Frontend URL: `http://localhost:3000`
   - Task Logs
     - `POST /api/tasks/{id}/logs`
     - `GET /api/tasks/{id}/logs`
+  - Analytics
+    - `GET /api/analytics/count-by-status`
+    - `GET /api/analytics/count-by-priority`
+    - `GET /api/analytics/completion-over-time`
 - Frontend:
   - Create task form
-  - Tasks table with sorting and filtering
+  - Tasks table with sorting, filtering, search, and pagination
   - Status badges and priority color themes
+  - Dark/light theme toggle
   - Clickable task rows that open an editable modal
   - Modal sections for basic info and deep details
   - Issue/resolution history with add-log form
+  - Analytics page at `/analytics` with pie/bar/line charts
+  - Loading and empty states
+
+## Architecture Notes
+
+- Backend:
+  - Split routes: `tasks`, `task_details`, `task_logs`, `analytics`
+  - Service layer added under `app/services`
+  - Database config reads `DATABASE_URL` for easier SQLite -> PostgreSQL migration
+- Frontend:
+  - SWR used for local caching and data revalidation
+  - API adapter layer maps backend payloads to UI models
+  - Shared reusable components (header, theme provider, loading/empty states)
 
 ## Notes
 
-- The database is in-memory for now. Data resets when backend restarts.
-- Architecture is modular so persistence can be switched later with minimal changes.
+- Data is stored locally in `backend/task_dashboard.db` by default.
+- Override `DATABASE_URL` if you want a different SQLite file location.
+- `Base.metadata.create_all(...)` currently manages table creation at app startup.

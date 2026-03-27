@@ -1,11 +1,32 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
+import useSWR from "swr";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Line,
+  LineChart,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 
+import EmptyState from "../components/EmptyState";
+import LoadingState from "../components/LoadingState";
 import {
   createTask,
   createTaskDetails,
   createTaskLog,
+  fetchCompletionOverTime,
+  fetchCountByPriority,
+  fetchCountByStatus,
   fetchTaskById,
   fetchTaskDetails,
   fetchTaskLogs,
@@ -14,6 +35,8 @@ import {
   updateTaskDetails,
 } from "../lib/api";
 import {
+  CompletionOverTimePoint,
+  CountByLabel,
   CreateTaskPayload,
   Task,
   TaskDetail,
@@ -23,6 +46,9 @@ import {
   TaskPriority,
   TaskStatus,
 } from "../lib/types";
+
+const PAGE_SIZE = 6;
+const STATUS_COLORS = ["#7cc7b6", "#f6d28b", "#9fd8a6"];
 
 const defaultTaskForm: CreateTaskPayload = {
   title: "",
@@ -34,15 +60,15 @@ const defaultTaskForm: CreateTaskPayload = {
 };
 
 const defaultDetailForm: TaskDetailPayload = {
-  assigned_by: "",
-  approach: "",
-  key_learnings: "",
-  notes: "",
+  assigned_by: null,
+  approach: null,
+  key_learnings: null,
+  notes: null,
 };
 
 const defaultLogForm: TaskLogPayload = {
   issue: "",
-  resolution: "",
+  resolution: null,
 };
 
 type SortField = "created_at" | "title" | "priority" | "status" | "start_date" | "end_date";
@@ -54,10 +80,25 @@ const priorityWeight: Record<TaskPriority, number> = {
   high: 3,
 };
 
+function isCountDataEmpty(items: CountByLabel[]) {
+  return items.length === 0 || items.every((item) => item.count === 0);
+}
+
+function isCompletionDataEmpty(items: CompletionOverTimePoint[]) {
+  return items.length === 0;
+}
+
 export default function HomePage() {
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const { data: tasks = [], isLoading, mutate } = useSWR("tasks", fetchTasks);
+  const { data: statusData = [], isLoading: statusLoading } = useSWR("home-analytics-status", fetchCountByStatus);
+  const { data: priorityData = [], isLoading: priorityLoading } = useSWR("home-analytics-priority", fetchCountByPriority);
+  const { data: completionData = [], isLoading: completionLoading } = useSWR(
+    "home-analytics-completion",
+    fetchCompletionOverTime,
+  );
+
+  const [showCreateForm, setShowCreateForm] = useState(false);
   const [taskForm, setTaskForm] = useState<CreateTaskPayload>(defaultTaskForm);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +106,8 @@ export default function HomePage() {
   const [priorityFilter, setPriorityFilter] = useState<"all" | TaskPriority>("all");
   const [sortField, setSortField] = useState<SortField>("created_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [page, setPage] = useState(1);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
@@ -80,27 +123,21 @@ export default function HomePage() {
   const [savingDetail, setSavingDetail] = useState(false);
   const [addingLog, setAddingLog] = useState(false);
 
-  async function loadTasks() {
-    try {
-      setError(null);
-      const data = await fetchTasks();
-      setTasks(data);
-    } catch {
-      setError("Could not load tasks. Make sure backend is running.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadTasks();
-  }, []);
+  const analyticsLoading = statusLoading || priorityLoading || completionLoading;
+  const analyticsEmpty =
+    !analyticsLoading && isCountDataEmpty(statusData) && isCountDataEmpty(priorityData) && isCompletionDataEmpty(completionData);
 
   const visibleTasks = useMemo(() => {
     const filtered = tasks.filter((task) => {
       const matchesStatus = statusFilter === "all" || task.status === statusFilter;
       const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
-      return matchesStatus && matchesPriority;
+      const query = searchTerm.trim().toLowerCase();
+      const matchesSearch =
+        query.length === 0 ||
+        task.title.toLowerCase().includes(query) ||
+        (task.description || "").toLowerCase().includes(query);
+
+      return matchesStatus && matchesPriority && matchesSearch;
     });
 
     return filtered.sort((a, b) => {
@@ -122,7 +159,14 @@ export default function HomePage() {
 
       return sortDirection === "asc" ? value : -value;
     });
-  }, [tasks, statusFilter, priorityFilter, sortField, sortDirection]);
+  }, [tasks, statusFilter, priorityFilter, searchTerm, sortField, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(visibleTasks.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const paginatedTasks = useMemo(() => {
+    const start = (currentPage - 1) * PAGE_SIZE;
+    return visibleTasks.slice(start, start + PAGE_SIZE);
+  }, [visibleTasks, currentPage]);
 
   function onTaskFormChange(
     field: "title" | "description" | "start_date" | "end_date" | "status" | "priority",
@@ -165,15 +209,24 @@ export default function HomePage() {
   function onDetailFormChange(field: keyof TaskDetailPayload, value: string) {
     setDetailForm((prev) => ({
       ...prev,
-      [field]: value,
+      [field]: value === "" ? null : value,
     }));
   }
 
   function onLogFormChange(field: keyof TaskLogPayload, value: string) {
-    setLogForm((prev) => ({
-      ...prev,
-      [field]: value,
-    }));
+    setLogForm((prev) => {
+      if (field === "issue") {
+        return {
+          ...prev,
+          issue: value,
+        };
+      }
+
+      return {
+        ...prev,
+        resolution: value === "" ? null : value,
+      };
+    });
   }
 
   async function onCreateTask(event: FormEvent<HTMLFormElement>) {
@@ -193,7 +246,8 @@ export default function HomePage() {
         description: taskForm.description || "",
       });
       setTaskForm(defaultTaskForm);
-      await loadTasks();
+      setShowCreateForm(false);
+      await mutate();
     } catch {
       setError("Could not create task.");
     } finally {
@@ -227,10 +281,10 @@ export default function HomePage() {
       });
 
       setDetailForm({
-        assigned_by: detail?.assigned_by || "",
-        approach: detail?.approach || "",
-        key_learnings: detail?.key_learnings || "",
-        notes: detail?.notes || "",
+        assigned_by: detail?.assigned_by || null,
+        approach: detail?.approach || null,
+        key_learnings: detail?.key_learnings || null,
+        notes: detail?.notes || null,
       });
 
       setLogForm(defaultLogForm);
@@ -255,17 +309,13 @@ export default function HomePage() {
   async function onSaveBasicInfo(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!selectedTask) return;
-    if (!basicForm.title || !basicForm.title.trim()) {
-      setError("Title is required");
-      return;
-    }
 
     setSavingBasic(true);
     setError(null);
 
     try {
       const updated = await updateTask(selectedTask.id, {
-        title: basicForm.title.trim(),
+        title: (basicForm.title || "").trim(),
         description: basicForm.description || "",
         status: basicForm.status,
         priority: basicForm.priority,
@@ -274,7 +324,7 @@ export default function HomePage() {
       });
 
       setSelectedTask(updated);
-      await loadTasks();
+      await mutate();
     } catch {
       setError("Could not save basic task info.");
     } finally {
@@ -290,16 +340,9 @@ export default function HomePage() {
     setError(null);
 
     try {
-      const payload = {
-        assigned_by: detailForm.assigned_by || null,
-        approach: detailForm.approach || null,
-        key_learnings: detailForm.key_learnings || null,
-        notes: detailForm.notes || null,
-      };
-
       const updatedDetail = selectedTaskDetail
-        ? await updateTaskDetails(selectedTask.id, payload)
-        : await createTaskDetails(selectedTask.id, payload);
+        ? await updateTaskDetails(selectedTask.id, detailForm)
+        : await createTaskDetails(selectedTask.id, detailForm);
 
       setSelectedTaskDetail(updatedDetail);
     } catch {
@@ -323,7 +366,7 @@ export default function HomePage() {
     try {
       const newLog = await createTaskLog(selectedTask.id, {
         issue: logForm.issue.trim(),
-        resolution: logForm.resolution || "",
+        resolution: logForm.resolution,
       });
 
       setSelectedTaskLogs((prev) => [newLog, ...prev]);
@@ -337,82 +380,155 @@ export default function HomePage() {
 
   return (
     <main className="container">
-      <h1>Personal Task Dashboard</h1>
+      <section className="card peaceful-hero">
+        <h2>Home Analytics</h2>
+        <p className="muted">A calm overview of your task progress.</p>
 
-      <section className="card">
-        <h2>Create Task</h2>
-        <form className="form-grid" onSubmit={onCreateTask}>
-          <label>
-            Title
-            <input
-              value={taskForm.title ?? ""}
-              onChange={(e) => onTaskFormChange("title", e.target.value)}
-              placeholder="Task title"
-              required
-            />
-          </label>
-
-          <label>
-            Description
-            <textarea
-              value={taskForm.description ?? ""}
-              onChange={(e) => onTaskFormChange("description", e.target.value)}
-              placeholder="Task description"
-              rows={3}
-            />
-          </label>
-
-          <div className="inline-grid">
-            <label>
-              Status
-              <select
-                value={taskForm.status}
-                onChange={(e) => onTaskFormChange("status", e.target.value as TaskStatus)}
-              >
-                <option value="todo">todo</option>
-                <option value="in-progress">in-progress</option>
-                <option value="done">done</option>
-              </select>
-            </label>
-
-            <label>
-              Priority
-              <select
-                value={taskForm.priority}
-                onChange={(e) => onTaskFormChange("priority", e.target.value as TaskPriority)}
-              >
-                <option value="low">low</option>
-                <option value="medium">medium</option>
-                <option value="high">high</option>
-              </select>
-            </label>
+        {analyticsLoading ? (
+          <LoadingState text="Loading home analytics..." />
+        ) : analyticsEmpty ? (
+          <div className="center-cta-wrap">
+            <EmptyState text="No analytics yet. Create your first task to get started." />
+            <button type="button" onClick={() => setShowCreateForm(true)}>
+              Create Task
+            </button>
           </div>
+        ) : (
+          <div className="home-analytics-grid">
+            <article className="analytics-mini-card">
+              <h3>By Status</h3>
+              <div className="mini-chart">
+                <ResponsiveContainer width="100%" height={220}>
+                  <PieChart>
+                    <Pie data={statusData} dataKey="count" nameKey="label" outerRadius={70}>
+                      {statusData.map((item, index) => (
+                        <Cell key={item.label} fill={STATUS_COLORS[index % STATUS_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
 
-          <div className="inline-grid">
-            <label>
-              Start Date
-              <input
-                type="date"
-                value={taskForm.start_date ?? ""}
-                onChange={(e) => onTaskFormChange("start_date", e.target.value)}
-              />
-            </label>
+            <article className="analytics-mini-card">
+              <h3>By Priority</h3>
+              <div className="mini-chart">
+                <ResponsiveContainer width="100%" height={220}>
+                  <BarChart data={priorityData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="label" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Bar dataKey="count" fill="#83c5be" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
 
-            <label>
-              End Date
-              <input
-                type="date"
-                value={taskForm.end_date ?? ""}
-                onChange={(e) => onTaskFormChange("end_date", e.target.value)}
-              />
-            </label>
+            <article className="analytics-mini-card analytics-wide-card">
+              <h3>Completion Trend</h3>
+              <div className="mini-chart wide-chart">
+                <ResponsiveContainer width="100%" height={240}>
+                  <LineChart data={completionData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" />
+                    <YAxis allowDecimals={false} />
+                    <Tooltip />
+                    <Legend />
+                    <Line type="monotone" dataKey="count" stroke="#6ba3be" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
           </div>
-
-          <button type="submit" disabled={submitting}>
-            {submitting ? "Creating..." : "Create Task"}
-          </button>
-        </form>
+        )}
       </section>
+
+      {!analyticsEmpty && (
+        <section className="home-menu-bar card">
+          <button type="button" onClick={() => setShowCreateForm((prev) => !prev)}>
+            {showCreateForm ? "Close Create Task" : "Create Task"}
+          </button>
+        </section>
+      )}
+
+      {showCreateForm && (
+        <section className="card">
+          <h2>Create Task</h2>
+          <form className="form-grid" onSubmit={onCreateTask}>
+            <label>
+              Title
+              <input
+                value={taskForm.title ?? ""}
+                onChange={(e) => onTaskFormChange("title", e.target.value)}
+                placeholder="Task title"
+                required
+              />
+            </label>
+
+            <label>
+              Description
+              <textarea
+                value={taskForm.description ?? ""}
+                onChange={(e) => onTaskFormChange("description", e.target.value)}
+                placeholder="Task description"
+                rows={3}
+              />
+            </label>
+
+            <div className="inline-grid">
+              <label>
+                Status
+                <select
+                  value={taskForm.status}
+                  onChange={(e) => onTaskFormChange("status", e.target.value as TaskStatus)}
+                >
+                  <option value="todo">todo</option>
+                  <option value="in-progress">in-progress</option>
+                  <option value="done">done</option>
+                </select>
+              </label>
+
+              <label>
+                Priority
+                <select
+                  value={taskForm.priority}
+                  onChange={(e) => onTaskFormChange("priority", e.target.value as TaskPriority)}
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </select>
+              </label>
+            </div>
+
+            <div className="inline-grid">
+              <label>
+                Start Date
+                <input
+                  type="date"
+                  value={taskForm.start_date ?? ""}
+                  onChange={(e) => onTaskFormChange("start_date", e.target.value)}
+                />
+              </label>
+
+              <label>
+                End Date
+                <input
+                  type="date"
+                  value={taskForm.end_date ?? ""}
+                  onChange={(e) => onTaskFormChange("end_date", e.target.value)}
+                />
+              </label>
+            </div>
+
+            <button type="submit" disabled={submitting}>
+              {submitting ? "Creating..." : "Create Task"}
+            </button>
+          </form>
+        </section>
+      )}
 
       {error && <p className="error">{error}</p>}
 
@@ -421,8 +537,26 @@ export default function HomePage() {
           <h2>Tasks</h2>
           <div className="controls-grid">
             <label>
+              Search
+              <input
+                value={searchTerm}
+                placeholder="Search title/description"
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </label>
+
+            <label>
               Status Filter
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as "all" | TaskStatus)}>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value as "all" | TaskStatus);
+                  setPage(1);
+                }}
+              >
                 <option value="all">all</option>
                 <option value="todo">todo</option>
                 <option value="in-progress">in-progress</option>
@@ -434,7 +568,10 @@ export default function HomePage() {
               Priority Filter
               <select
                 value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value as "all" | TaskPriority)}
+                onChange={(e) => {
+                  setPriorityFilter(e.target.value as "all" | TaskPriority);
+                  setPage(1);
+                }}
               >
                 <option value="all">all</option>
                 <option value="low">low</option>
@@ -465,52 +602,76 @@ export default function HomePage() {
           </div>
         </div>
 
-        {loading ? (
-          <p>Loading tasks...</p>
-        ) : visibleTasks.length === 0 ? (
-          <p>No tasks found.</p>
+        {isLoading ? (
+          <LoadingState text="Loading tasks..." />
+        ) : paginatedTasks.length === 0 ? (
+          <EmptyState text="No tasks found for the current filters." />
         ) : (
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Description</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {visibleTasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className="clickable-row"
-                    onClick={() => void openTaskModal(task.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        void openTaskModal(task.id);
-                      }
-                    }}
-                  >
-                    <td>{task.title}</td>
-                    <td>{task.description || "-"}</td>
-                    <td>
-                      <span className={`status-badge status-${task.status}`}>{task.status}</span>
-                    </td>
-                    <td>
-                      <span className={`priority-pill priority-${task.priority}`}>{task.priority}</span>
-                    </td>
-                    <td>{task.start_date || "-"}</td>
-                    <td>{task.end_date || "-"}</td>
+          <>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Description</th>
+                    <th>Status</th>
+                    <th>Priority</th>
+                    <th>Start Date</th>
+                    <th>End Date</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {paginatedTasks.map((task) => (
+                    <tr
+                      key={task.id}
+                      className="clickable-row"
+                      onClick={() => void openTaskModal(task.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          void openTaskModal(task.id);
+                        }
+                      }}
+                    >
+                      <td>{task.title}</td>
+                      <td>{task.description || "-"}</td>
+                      <td>
+                        <span className={`status-badge status-${task.status}`}>{task.status}</span>
+                      </td>
+                      <td>
+                        <span className={`priority-pill priority-${task.priority}`}>{task.priority}</span>
+                      </td>
+                      <td>{task.start_date || "-"}</td>
+                      <td>{task.end_date || "-"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="pagination-row">
+              <button
+                type="button"
+                className="secondary-btn"
+                disabled={currentPage <= 1}
+                onClick={() => setPage((p) => p - 1)}
+              >
+                Prev
+              </button>
+              <span>
+                Page {currentPage} of {totalPages}
+              </span>
+              <button
+                type="button"
+                className="secondary-btn"
+                disabled={currentPage >= totalPages}
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Next
+              </button>
+            </div>
+          </>
         )}
       </section>
 
@@ -525,7 +686,7 @@ export default function HomePage() {
             </div>
 
             {modalLoading || !selectedTask ? (
-              <p>Loading task details...</p>
+              <LoadingState text="Loading task details..." />
             ) : (
               <>
                 <section className="card section-card">
@@ -607,7 +768,7 @@ export default function HomePage() {
                     <label>
                       Assigned By
                       <input
-                        value={detailForm.assigned_by}
+                        value={detailForm.assigned_by || ""}
                         onChange={(e) => onDetailFormChange("assigned_by", e.target.value)}
                         placeholder="Person/team assigning this task"
                       />
@@ -616,7 +777,7 @@ export default function HomePage() {
                     <label>
                       Approach To Solve
                       <textarea
-                        value={detailForm.approach}
+                        value={detailForm.approach || ""}
                         onChange={(e) => onDetailFormChange("approach", e.target.value)}
                         rows={3}
                       />
@@ -625,7 +786,7 @@ export default function HomePage() {
                     <label>
                       Key Learnings
                       <textarea
-                        value={detailForm.key_learnings}
+                        value={detailForm.key_learnings || ""}
                         onChange={(e) => onDetailFormChange("key_learnings", e.target.value)}
                         rows={2}
                       />
@@ -634,7 +795,7 @@ export default function HomePage() {
                     <label>
                       Notes
                       <textarea
-                        value={detailForm.notes}
+                        value={detailForm.notes || ""}
                         onChange={(e) => onDetailFormChange("notes", e.target.value)}
                         rows={2}
                       />
@@ -648,7 +809,7 @@ export default function HomePage() {
                   <div className="logs-section">
                     <h4>Issues Faced & Resolutions</h4>
                     {selectedTaskLogs.length === 0 ? (
-                      <p>No issues logged yet.</p>
+                      <EmptyState text="No issues logged yet." />
                     ) : (
                       <div className="log-list">
                         {selectedTaskLogs.map((log) => (
@@ -679,7 +840,7 @@ export default function HomePage() {
                       <label>
                         Resolution
                         <textarea
-                          value={logForm.resolution}
+                          value={logForm.resolution || ""}
                           onChange={(e) => onLogFormChange("resolution", e.target.value)}
                           rows={2}
                         />

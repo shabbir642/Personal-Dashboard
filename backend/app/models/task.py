@@ -31,5 +31,11 @@ class Task(Base):
     end_date = Column(Date, nullable=True)
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
-    detail = relationship("TaskDetail", back_populates="task", uselist=False, cascade="all, delete-orphan")
-    logs = relationship("TaskLog", back_populates="task", cascade="all, delete-orphan")
+    detail = relationship(
+        "TaskDetail",
+        back_populates="task",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    logs = relationship("TaskLog", back_populates="task", cascade="all, delete-orphan", passive_deletes=True)

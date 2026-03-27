@@ -1,4 +1,6 @@
 import "../styles/globals.css";
+import AppHeader from "../components/AppHeader";
+import { ThemeProvider } from "../components/ThemeProvider";
 
 export const metadata = {
   title: "Personal Task Dashboard",
@@ -12,7 +14,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <ThemeProvider>
+          <AppHeader />
+          {children}
+        </ThemeProvider>
+      </body>
     </html>
   );
 }

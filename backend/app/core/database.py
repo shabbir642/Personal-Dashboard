@@ -2,14 +2,19 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 
-# In-memory SQLite database. StaticPool ensures one shared connection across sessions.
-SQLALCHEMY_DATABASE_URL = "sqlite://"
+from app.core.config import DATABASE_URL
 
-engine = create_engine(
-    SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
-)
+is_sqlite = DATABASE_URL.startswith("sqlite")
+is_in_memory_sqlite = DATABASE_URL in {"sqlite://", "sqlite:///:memory:"}
+
+engine_kwargs = {}
+if is_sqlite:
+    engine_kwargs["connect_args"] = {"check_same_thread": False}
+if is_in_memory_sqlite:
+    # Shared in-memory DB across connections while app process is alive.
+    engine_kwargs["poolclass"] = StaticPool
+
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 

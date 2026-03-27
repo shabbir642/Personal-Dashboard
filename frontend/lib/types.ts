@@ -58,3 +58,13 @@ export interface TaskLogPayload {
   issue: string;
   resolution: string | null;
 }
+
+export interface CountByLabel {
+  label: string;
+  count: number;
+}
+
+export interface CompletionOverTimePoint {
+  date: string;
+  count: number;
+}
