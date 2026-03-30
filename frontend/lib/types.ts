@@ -1,6 +1,18 @@
 export type TaskStatus = "todo" | "in-progress" | "done";
 export type TaskPriority = "low" | "medium" | "high";
 
+export interface TaskAIInsight {
+  id: number;
+  task_id: number;
+  overview: string;
+  suggestions: string;
+  impact: string;
+  skills_improvement: string;
+  provider: string | null;
+  model_name: string | null;
+  created_at: string;
+}
+
 export interface Task {
   id: number;
   title: string;
@@ -10,6 +22,7 @@ export interface Task {
   start_date: string | null;
   end_date: string | null;
   created_at: string;
+  ai_insight: TaskAIInsight | null;
 }
 
 export interface CreateTaskPayload {

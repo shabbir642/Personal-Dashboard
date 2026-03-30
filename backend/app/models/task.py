@@ -38,4 +38,11 @@ class Task(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    ai_insight = relationship(
+        "TaskAIInsight",
+        back_populates="task",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     logs = relationship("TaskLog", back_populates="task", cascade="all, delete-orphan", passive_deletes=True)

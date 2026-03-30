@@ -22,25 +22,22 @@ import EmptyState from "../components/EmptyState";
 import LoadingState from "../components/LoadingState";
 import {
   createTask,
-  createTaskDetails,
   createTaskLog,
   fetchCompletionOverTime,
   fetchCountByPriority,
   fetchCountByStatus,
   fetchTaskById,
-  fetchTaskDetails,
   fetchTaskLogs,
   fetchTasks,
+  generateTaskAIInsight,
   updateTask,
-  updateTaskDetails,
 } from "../lib/api";
 import {
   CompletionOverTimePoint,
   CountByLabel,
   CreateTaskPayload,
   Task,
-  TaskDetail,
-  TaskDetailPayload,
+  TaskAIInsight,
   TaskLog,
   TaskLogPayload,
   TaskPriority,
@@ -48,7 +45,9 @@ import {
 } from "../lib/types";
 
 const PAGE_SIZE = 6;
+const MIN_INSIGHT_DESCRIPTION_LENGTH = 30;
 const STATUS_COLORS = ["#7cc7b6", "#f6d28b", "#9fd8a6"];
+const INSIGHT_CATEGORIES = ["general", "product", "engineering", "design", "marketing", "operations", "custom"] as const;
 
 const defaultTaskForm: CreateTaskPayload = {
   title: "",
@@ -57,13 +56,6 @@ const defaultTaskForm: CreateTaskPayload = {
   priority: "medium",
   start_date: null,
   end_date: null,
-};
-
-const defaultDetailForm: TaskDetailPayload = {
-  assigned_by: null,
-  approach: null,
-  key_learnings: null,
-  notes: null,
 };
 
 const defaultLogForm: TaskLogPayload = {
@@ -86,6 +78,24 @@ function isCountDataEmpty(items: CountByLabel[]) {
 
 function isCompletionDataEmpty(items: CompletionOverTimePoint[]) {
   return items.length === 0;
+}
+
+function parseSuggestionSections(suggestions: string) {
+  const text = suggestions || "";
+  const extraMarker = "Extras (30%)";
+  const markerIndex = text.indexOf(extraMarker);
+
+  if (markerIndex === -1) {
+    return {
+      primary: text.trim(),
+      extras: "",
+    };
+  }
+
+  return {
+    primary: text.slice(0, markerIndex).trim(),
+    extras: text.slice(markerIndex).trim(),
+  };
 }
 
 export default function HomePage() {
@@ -112,15 +122,16 @@ export default function HomePage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalLoading, setModalLoading] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [selectedTaskDetail, setSelectedTaskDetail] = useState<TaskDetail | null>(null);
+  const [selectedTaskInsight, setSelectedTaskInsight] = useState<TaskAIInsight | null>(null);
   const [selectedTaskLogs, setSelectedTaskLogs] = useState<TaskLog[]>([]);
 
   const [basicForm, setBasicForm] = useState<CreateTaskPayload>(defaultTaskForm);
-  const [detailForm, setDetailForm] = useState<TaskDetailPayload>(defaultDetailForm);
   const [logForm, setLogForm] = useState<TaskLogPayload>(defaultLogForm);
 
   const [savingBasic, setSavingBasic] = useState(false);
-  const [savingDetail, setSavingDetail] = useState(false);
+  const [loadingInsight, setLoadingInsight] = useState(false);
+  const [insightCategory, setInsightCategory] = useState<string>("general");
+  const [customInsightCategory, setCustomInsightCategory] = useState<string>("");
   const [addingLog, setAddingLog] = useState(false);
 
   const analyticsLoading = statusLoading || priorityLoading || completionLoading;
@@ -167,6 +178,7 @@ export default function HomePage() {
     const start = (currentPage - 1) * PAGE_SIZE;
     return visibleTasks.slice(start, start + PAGE_SIZE);
   }, [visibleTasks, currentPage]);
+  const parsedSuggestionSections = selectedTaskInsight ? parseSuggestionSections(selectedTaskInsight.suggestions) : null;
 
   function onTaskFormChange(
     field: "title" | "description" | "start_date" | "end_date" | "status" | "priority",
@@ -204,13 +216,6 @@ export default function HomePage() {
         [field]: value,
       };
     });
-  }
-
-  function onDetailFormChange(field: keyof TaskDetailPayload, value: string) {
-    setDetailForm((prev) => ({
-      ...prev,
-      [field]: value === "" ? null : value,
-    }));
   }
 
   function onLogFormChange(field: keyof TaskLogPayload, value: string) {
@@ -261,14 +266,13 @@ export default function HomePage() {
     setError(null);
 
     try {
-      const [task, detail, logs] = await Promise.all([
+      const [task, logs] = await Promise.all([
         fetchTaskById(taskId),
-        fetchTaskDetails(taskId),
         fetchTaskLogs(taskId),
       ]);
 
       setSelectedTask(task);
-      setSelectedTaskDetail(detail);
+      setSelectedTaskInsight(task.ai_insight);
       setSelectedTaskLogs(logs);
 
       setBasicForm({
@@ -278,13 +282,6 @@ export default function HomePage() {
         priority: task.priority,
         start_date: task.start_date,
         end_date: task.end_date,
-      });
-
-      setDetailForm({
-        assigned_by: detail?.assigned_by || null,
-        approach: detail?.approach || null,
-        key_learnings: detail?.key_learnings || null,
-        notes: detail?.notes || null,
       });
 
       setLogForm(defaultLogForm);
@@ -299,11 +296,12 @@ export default function HomePage() {
   function closeTaskModal() {
     setIsModalOpen(false);
     setSelectedTask(null);
-    setSelectedTaskDetail(null);
+    setSelectedTaskInsight(null);
     setSelectedTaskLogs([]);
     setBasicForm(defaultTaskForm);
-    setDetailForm(defaultDetailForm);
     setLogForm(defaultLogForm);
+    setInsightCategory("general");
+    setCustomInsightCategory("");
   }
 
   async function onSaveBasicInfo(event: FormEvent<HTMLFormElement>) {
@@ -332,23 +330,35 @@ export default function HomePage() {
     }
   }
 
-  async function onSaveDeepDetails(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  async function onGetDeepInsight() {
     if (!selectedTask) return;
+    const description = (selectedTask.description || "").trim();
+    if (description.length < MIN_INSIGHT_DESCRIPTION_LENGTH) {
+      setError(`Please add at least ${MIN_INSIGHT_DESCRIPTION_LENGTH} characters in description before generating deep insight.`);
+      return;
+    }
 
-    setSavingDetail(true);
+    setLoadingInsight(true);
     setError(null);
 
     try {
-      const updatedDetail = selectedTaskDetail
-        ? await updateTaskDetails(selectedTask.id, detailForm)
-        : await createTaskDetails(selectedTask.id, detailForm);
-
-      setSelectedTaskDetail(updatedDetail);
-    } catch {
-      setError("Could not save deep details.");
+      const selectedCategory = insightCategory === "custom" ? customInsightCategory.trim() : insightCategory;
+      if (!selectedCategory) {
+        setError("Please enter a custom category for deep insight.");
+        return;
+      }
+      const insight = await generateTaskAIInsight(selectedTask.id, selectedCategory);
+      setSelectedTaskInsight(insight);
+      setSelectedTask((prev) => (prev ? { ...prev, ai_insight: insight } : prev));
+      await mutate();
+    } catch (err) {
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError("Could not generate deep insight.");
+      }
     } finally {
-      setSavingDetail(false);
+      setLoadingInsight(false);
     }
   }
 
@@ -763,48 +773,65 @@ export default function HomePage() {
                 </section>
 
                 <section className="card section-card">
-                  <h3>Section 2: Deep Details</h3>
-                  <form className="form-grid" onSubmit={onSaveDeepDetails}>
-                    <label>
-                      Assigned By
-                      <input
-                        value={detailForm.assigned_by || ""}
-                        onChange={(e) => onDetailFormChange("assigned_by", e.target.value)}
-                        placeholder="Person/team assigning this task"
-                      />
-                    </label>
+                  <div className="insight-header-row">
+                    <h3>Section 2: Deep Insight</h3>
+                    <div className="insight-actions">
+                      <label className="insight-category-label">
+                        Focus Category
+                        <select value={insightCategory} onChange={(e) => setInsightCategory(e.target.value)}>
+                          {INSIGHT_CATEGORIES.map((category) => (
+                            <option key={category} value={category}>
+                              {category}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      {insightCategory === "custom" && (
+                        <label className="insight-category-label">
+                          Custom Category
+                          <input
+                            value={customInsightCategory}
+                            onChange={(e) => setCustomInsightCategory(e.target.value)}
+                            placeholder="e.g. data science, sales ops"
+                          />
+                        </label>
+                      )}
+                      <button type="button" onClick={() => void onGetDeepInsight()} disabled={loadingInsight}>
+                        {loadingInsight ? "Generating..." : "Get Deep Insight"}
+                      </button>
+                    </div>
+                  </div>
+                  <p className="muted insight-hint">
+                    AI keeps suggestions mostly in your selected category (70%) and separates surrounding-category
+                    extras (30%). Add a meaningful description before generating.
+                  </p>
 
-                    <label>
-                      Approach To Solve
-                      <textarea
-                        value={detailForm.approach || ""}
-                        onChange={(e) => onDetailFormChange("approach", e.target.value)}
-                        rows={3}
-                      />
-                    </label>
-
-                    <label>
-                      Key Learnings
-                      <textarea
-                        value={detailForm.key_learnings || ""}
-                        onChange={(e) => onDetailFormChange("key_learnings", e.target.value)}
-                        rows={2}
-                      />
-                    </label>
-
-                    <label>
-                      Notes
-                      <textarea
-                        value={detailForm.notes || ""}
-                        onChange={(e) => onDetailFormChange("notes", e.target.value)}
-                        rows={2}
-                      />
-                    </label>
-
-                    <button type="submit" disabled={savingDetail}>
-                      {savingDetail ? "Saving..." : selectedTaskDetail ? "Update Deep Details" : "Create Deep Details"}
-                    </button>
-                  </form>
+                  {selectedTaskInsight ? (
+                    <div className="ai-insight-grid">
+                      <article className="ai-insight-card">
+                        <h4>Overview</h4>
+                        <p>{selectedTaskInsight.overview}</p>
+                      </article>
+                      <article className="ai-insight-card">
+                        <h4>Suggestions (70%)</h4>
+                        <p>{parsedSuggestionSections?.primary || selectedTaskInsight.suggestions}</p>
+                      </article>
+                      <article className="ai-insight-card">
+                        <h4>Impact</h4>
+                        <p>{selectedTaskInsight.impact}</p>
+                      </article>
+                      <article className="ai-insight-card">
+                        <h4>Skills Improvement</h4>
+                        <p>{selectedTaskInsight.skills_improvement}</p>
+                      </article>
+                      <article className="ai-insight-card ai-insight-card-wide">
+                        <h4>Extras (30%)</h4>
+                        <p>{parsedSuggestionSections?.extras || "No surrounding-category extras were returned."}</p>
+                      </article>
+                    </div>
+                  ) : (
+                    <EmptyState text="No deep insight yet. Click 'Get Deep Insight' to generate AI output." />
+                  )}
 
                   <div className="logs-section">
                     <h4>Issues Faced & Resolutions</h4>

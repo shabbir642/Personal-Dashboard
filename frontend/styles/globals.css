@@ -322,6 +322,74 @@ th {
   margin-top: 12px;
 }
 
+.insight-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.insight-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.insight-category-label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 140px;
+}
+
+.insight-hint {
+  margin-bottom: 12px;
+}
+
+.ai-insight-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.ai-insight-card {
+  position: relative;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border) 60%);
+  border-radius: 10px;
+  padding: 12px;
+  background:
+    radial-gradient(circle at 15% 20%, color-mix(in srgb, var(--accent) 20%, transparent 80%), transparent 45%),
+    linear-gradient(140deg, color-mix(in srgb, var(--surface) 90%, #cde6de 10%), var(--surface));
+  overflow: hidden;
+}
+
+.ai-insight-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent 0%, color-mix(in srgb, #ffffff 18%, transparent 82%) 35%, transparent 70%);
+  opacity: 0.65;
+}
+
+.ai-insight-card h4 {
+  margin-bottom: 6px;
+}
+
+.ai-insight-card p {
+  margin: 0;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.ai-insight-card-wide {
+  grid-column: 1 / -1;
+}
+
 .log-list {
   display: grid;
   gap: 10px;
@@ -386,6 +454,15 @@ th {
 
   .home-analytics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ai-insight-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .insight-header-row {
+    flex-direction: column;
+    align-items: stretch;
   }
 }
 

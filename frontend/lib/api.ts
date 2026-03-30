@@ -3,6 +3,7 @@ import {
   CountByLabel,
   CreateTaskPayload,
   Task,
+  TaskAIInsight,
   TaskDetail,
   TaskDetailPayload,
   TaskLog,
@@ -12,6 +13,7 @@ import {
 import {
   toCompletionPointModel,
   toCountByLabelModel,
+  toTaskAIInsightModel,
   toTaskDetailModel,
   toTaskLogModel,
   toTaskModel,
@@ -26,7 +28,16 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new Error(`Request failed: ${path}`);
+    let message = `Request failed: ${path}`;
+    try {
+      const errorBody = await response.json();
+      if (errorBody?.detail) {
+        message = String(errorBody.detail);
+      }
+    } catch {
+      // Ignore JSON parse failures and keep fallback error message.
+    }
+    throw new Error(message);
   }
 
   return response.json();
@@ -51,6 +62,17 @@ export async function createTask(payload: CreateTaskPayload): Promise<Task> {
 export async function fetchTaskById(taskId: number): Promise<Task> {
   const data = await request<any>(`/tasks/${taskId}`);
   return toTaskModel(data);
+}
+
+export async function generateTaskAIInsight(taskId: number, category: string): Promise<TaskAIInsight> {
+  const data = await request<any>(`/tasks/${taskId}/ai-insight/generate`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ category }),
+  });
+  return toTaskAIInsightModel(data);
 }
 
 export async function updateTask(taskId: number, payload: UpdateTaskPayload): Promise<Task> {

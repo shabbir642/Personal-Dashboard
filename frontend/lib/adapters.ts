@@ -1,4 +1,18 @@
-import { CompletionOverTimePoint, CountByLabel, Task, TaskDetail, TaskLog } from "./types";
+import { CompletionOverTimePoint, CountByLabel, Task, TaskAIInsight, TaskDetail, TaskLog } from "./types";
+
+export function toTaskAIInsightModel(input: any): TaskAIInsight {
+  return {
+    id: Number(input.id),
+    task_id: Number(input.task_id),
+    overview: String(input.overview || ""),
+    suggestions: String(input.suggestions || ""),
+    impact: String(input.impact || ""),
+    skills_improvement: String(input.skills_improvement || ""),
+    provider: input.provider ?? null,
+    model_name: input.model_name ?? null,
+    created_at: String(input.created_at || ""),
+  };
+}
 
 export function toTaskModel(input: any): Task {
   return {
@@ -10,6 +24,7 @@ export function toTaskModel(input: any): Task {
     start_date: input.start_date ?? null,
     end_date: input.end_date ?? null,
     created_at: String(input.created_at),
+    ai_insight: input.ai_insight ? toTaskAIInsightModel(input.ai_insight) : null,
   };
 }
 

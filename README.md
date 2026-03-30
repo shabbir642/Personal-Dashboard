@@ -22,6 +22,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+cp .env.example .env
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -47,6 +48,8 @@ Frontend URL: `http://localhost:3000`
     - `id`, `task_id`, `assigned_by`, `approach`, `key_learnings`, `notes`
   - `task_logs`
     - `id`, `task_id`, `issue`, `resolution`, `created_at`
+  - `task_ai_insights`
+    - `id`, `task_id`, `overview`, `suggestions`, `impact`, `skills_improvement`, `provider`, `model_name`, `created_at`
 - REST APIs:
   - Tasks
     - `POST /api/tasks`
@@ -54,6 +57,9 @@ Frontend URL: `http://localhost:3000`
     - `GET /api/tasks/{id}`
     - `PUT /api/tasks/{id}`
     - `DELETE /api/tasks/{id}`
+  - Task AI Insight
+    - `GET /api/tasks/{id}/ai-insight`
+    - `POST /api/tasks/{id}/ai-insight/generate`
   - Task Details
     - `POST /api/tasks/{id}/details`
     - `GET /api/tasks/{id}/details`
@@ -92,3 +98,8 @@ Frontend URL: `http://localhost:3000`
 - Data is stored locally in `backend/task_dashboard.db` by default.
 - Override `DATABASE_URL` if you want a different SQLite file location.
 - `Base.metadata.create_all(...)` currently manages table creation at app startup.
+- AI task enrichment can be toggled by env:
+  - `TASK_AI_ENRICHMENT_ENABLED` (default `true`)
+  - `TASK_AI_PROVIDER` (`mock` or `openai`, default `mock`)
+  - `TASK_AI_MODEL` (default `gpt-4.1-mini`)
+  - `TASK_AI_OPENAI_API_KEY` (required only if `TASK_AI_PROVIDER=openai`)

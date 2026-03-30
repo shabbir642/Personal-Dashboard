@@ -4,6 +4,8 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.schemas.task_ai_insight import TaskAIInsightResponse
+
 
 class TaskStatus(str, Enum):
     TODO = "todo"
@@ -27,7 +29,7 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    pass
+    tags: list[str] = Field(default_factory=list)
 
 
 class TaskUpdate(BaseModel):
@@ -42,5 +44,6 @@ class TaskUpdate(BaseModel):
 class TaskResponse(TaskBase):
     id: int
     created_at: datetime
+    ai_insight: Optional[TaskAIInsightResponse] = None
 
     model_config = ConfigDict(from_attributes=True)
