@@ -2,11 +2,9 @@
 
 import useSWR from "swr";
 
-import EmptyState from "../../components/EmptyState";
-import LoadingState from "../../components/LoadingState";
+import { Card } from "../../components/sb/primitives";
 import {
   CompletionLineChart,
-  DEFAULT_STATUS_COLORS,
   PriorityBarChart,
   StatusPieChart,
 } from "../../components/analytics/AnalyticsCharts";
@@ -16,8 +14,6 @@ import {
   fetchCountByStatus,
 } from "../../lib/api";
 import { SWR_KEYS } from "../../lib/swrKeys";
-
-const PRIORITY_BAR_COLOR = "#0f766e";
 
 export default function AnalyticsPage() {
   const { data: statusData = [], isLoading: statusLoading } = useSWR(
@@ -36,65 +32,58 @@ export default function AnalyticsPage() {
   const loading = statusLoading || priorityLoading || completionLoading;
 
   return (
-    <main className="container">
-      <section className="card">
-        <h2>Analytics</h2>
-        <p className="muted">Overview of task distribution and completion trends.</p>
-      </section>
+    <div>
+      <div className="sb-pagehead">
+        <div>
+          <div className="sb-eyebrow">analytics</div>
+          <h1 className="sb-pagehead__title">charts.</h1>
+          <p className="sb-pagehead__sub">distribution and completion trends.</p>
+        </div>
+      </div>
 
       {loading ? (
-        <section className="card">
-          <LoadingState text="Loading analytics..." />
-        </section>
+        <div className="sb-loading">loading charts…</div>
       ) : (
         <>
-          <section className="chart-grid">
-            <article className="card chart-card">
-              <h3>Tasks By Status</h3>
-              {statusData.length === 0 || statusData.every((item) => item.count === 0) ? (
-                <EmptyState text="No status data available yet." />
-              ) : (
-                <div className="chart-wrap">
-                  <StatusPieChart
-                    data={statusData}
-                    height={300}
-                    outerRadius={100}
-                    showLegend
-                  />
-                  <div className="legend-row">
-                    {statusData.map((item, index) => (
-                      <span key={item.label} className="legend-chip">
-                        <span
-                          className="legend-dot"
-                          style={{
-                            background:
-                              DEFAULT_STATUS_COLORS[index % DEFAULT_STATUS_COLORS.length],
-                          }}
-                        />
-                        {item.label}: {item.count}
-                      </span>
-                    ))}
-                  </div>
+          <div className="sb-charts-grid">
+            <Card className="sb-panel">
+              <header className="sb-panel__head">
+                <div>
+                  <h3 className="sb-panel__title">by status</h3>
+                  <div className="sb-panel__sub">share of tasks</div>
                 </div>
-              )}
-            </article>
-
-            <article className="card chart-card">
-              <h3>Tasks By Priority</h3>
-              <div className="chart-wrap">
-                <PriorityBarChart data={priorityData} height={300} color={PRIORITY_BAR_COLOR} />
+              </header>
+              <div className="sb-chart-wrap">
+                <StatusPieChart data={statusData} height={260} outerRadius={90} />
               </div>
-            </article>
-          </section>
+            </Card>
 
-          <section className="card chart-card">
-            <h3>Task Completion Over Time</h3>
-            <div className="chart-wrap">
-              <CompletionLineChart data={completionData} height={320} color="#0ea5e9" />
+            <Card className="sb-panel">
+              <header className="sb-panel__head">
+                <div>
+                  <h3 className="sb-panel__title">by priority</h3>
+                  <div className="sb-panel__sub">count by bucket</div>
+                </div>
+              </header>
+              <div className="sb-chart-wrap">
+                <PriorityBarChart data={priorityData} height={260} />
+              </div>
+            </Card>
+          </div>
+
+          <Card className="sb-panel">
+            <header className="sb-panel__head">
+              <div>
+                <h3 className="sb-panel__title">completion over time</h3>
+                <div className="sb-panel__sub">tasks marked done · daily</div>
+              </div>
+            </header>
+            <div className="sb-chart-wrap" style={{ height: 320 }}>
+              <CompletionLineChart data={completionData} height={320} />
             </div>
-          </section>
+          </Card>
         </>
       )}
-    </main>
+    </div>
   );
 }

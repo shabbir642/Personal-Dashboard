@@ -2,14 +2,26 @@
 
 import { FormEvent, useCallback } from "react";
 
-import { CreateTaskPayload, TaskPriority, TaskStatus } from "../../lib/types";
+import { Button, Field, Icon } from "../sb/primitives";
+import type {
+  CreateTaskPayload,
+  TaskPriority,
+  TaskStatus,
+} from "../../lib/types";
 
-type Field = "title" | "description" | "start_date" | "end_date" | "status" | "priority";
+type FieldName =
+  | "title"
+  | "description"
+  | "start_date"
+  | "end_date"
+  | "status"
+  | "priority";
 
 export interface TaskFormProps {
   value: CreateTaskPayload;
   onChange: (next: CreateTaskPayload) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
+  onCancel?: () => void;
   submitting?: boolean;
   submitLabel: string;
   submittingLabel: string;
@@ -20,13 +32,14 @@ export default function TaskForm({
   value,
   onChange,
   onSubmit,
+  onCancel,
   submitting = false,
   submitLabel,
   submittingLabel,
   maxDescriptionLength,
 }: TaskFormProps) {
   const update = useCallback(
-    (field: Field, raw: string) => {
+    (field: FieldName, raw: string) => {
       if (field === "start_date" || field === "end_date") {
         onChange({ ...value, [field]: raw === "" ? null : raw });
         return;
@@ -44,77 +57,112 @@ export default function TaskForm({
     [value, onChange],
   );
 
-  const dateOrderValid = !value.start_date || !value.end_date || value.end_date >= value.start_date;
+  const dateOrderValid =
+    !value.start_date ||
+    !value.end_date ||
+    (value.end_date ?? "") >= (value.start_date ?? "");
 
   return (
-    <form className="form-grid" onSubmit={onSubmit}>
-      <label>
-        Title
-        <input
-          value={value.title ?? ""}
-          onChange={(e) => update("title", e.target.value)}
-          placeholder="Task title"
-          required
-          maxLength={255}
-        />
-      </label>
+    <form onSubmit={onSubmit}>
+      <div className="sb-form">
+        <Field label="title">
+          <input
+            className="sb-input"
+            value={value.title ?? ""}
+            onChange={(e) => update("title", e.target.value)}
+            placeholder="what are you shipping?"
+            required
+            maxLength={255}
+            autoFocus
+          />
+        </Field>
 
-      <label>
-        Description
-        <textarea
-          value={value.description ?? ""}
-          onChange={(e) => update("description", e.target.value)}
-          placeholder="Task description"
-          rows={3}
-          maxLength={maxDescriptionLength}
-        />
-      </label>
+        <Field
+          label="description"
+          hint={
+            maxDescriptionLength
+              ? `up to ${maxDescriptionLength} chars. context helps the ai.`
+              : undefined
+          }
+        >
+          <textarea
+            className="sb-input sb-input--ta"
+            value={value.description ?? ""}
+            onChange={(e) => update("description", e.target.value)}
+            placeholder="what's worth remembering?"
+            rows={4}
+            maxLength={maxDescriptionLength}
+          />
+        </Field>
 
-      <div className="inline-grid">
-        <label>
-          Status
-          <select value={value.status} onChange={(e) => update("status", e.target.value)}>
-            <option value="todo">todo</option>
-            <option value="in-progress">in-progress</option>
-            <option value="done">done</option>
-          </select>
-        </label>
+        <div className="sb-form__row">
+          <Field label="status">
+            <select
+              className="sb-input"
+              value={value.status}
+              onChange={(e) => update("status", e.target.value)}
+            >
+              <option value="todo">todo</option>
+              <option value="in-progress">in-progress</option>
+              <option value="done">done</option>
+            </select>
+          </Field>
+          <Field label="priority">
+            <select
+              className="sb-input"
+              value={value.priority}
+              onChange={(e) => update("priority", e.target.value)}
+            >
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </select>
+          </Field>
+        </div>
 
-        <label>
-          Priority
-          <select value={value.priority} onChange={(e) => update("priority", e.target.value)}>
-            <option value="low">low</option>
-            <option value="medium">medium</option>
-            <option value="high">high</option>
-          </select>
-        </label>
+        <div className="sb-form__row">
+          <Field label="start date">
+            <input
+              className="sb-input"
+              type="date"
+              value={value.start_date ?? ""}
+              onChange={(e) => update("start_date", e.target.value)}
+            />
+          </Field>
+          <Field
+            label="end date"
+            error={
+              dateOrderValid ? undefined : "end date cannot be before start date."
+            }
+          >
+            <input
+              className="sb-input"
+              type="date"
+              value={value.end_date ?? ""}
+              onChange={(e) => update("end_date", e.target.value)}
+            />
+          </Field>
+        </div>
       </div>
 
-      <div className="inline-grid">
-        <label>
-          Start Date
-          <input
-            type="date"
-            value={value.start_date ?? ""}
-            onChange={(e) => update("start_date", e.target.value)}
-          />
-        </label>
-
-        <label>
-          End Date
-          <input
-            type="date"
-            value={value.end_date ?? ""}
-            onChange={(e) => update("end_date", e.target.value)}
-          />
-        </label>
-      </div>
-
-      {!dateOrderValid && <p className="error">End date cannot be before start date.</p>}
-
-      <button type="submit" disabled={submitting || !dateOrderValid}>
-        {submitting ? submittingLabel : submitLabel}
-      </button>
+      <footer className="sb-modal__footer">
+        <div />
+        <div className="sb-modal__footer-right">
+          {onCancel && (
+            <Button variant="secondary" onClick={onCancel}>
+              cancel
+            </Button>
+          )}
+          <Button
+            variant="primary"
+            type="submit"
+            icon={<Icon name="check" />}
+            disabled={submitting || !dateOrderValid}
+          >
+            {submitting ? submittingLabel : submitLabel}
+          </Button>
+        </div>
+      </footer>
     </form>
   );
 }

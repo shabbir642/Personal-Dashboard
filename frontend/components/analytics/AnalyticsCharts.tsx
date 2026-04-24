@@ -19,7 +19,8 @@ import {
 import EmptyState from "../EmptyState";
 import { CompletionOverTimePoint, CountByLabel } from "../../lib/types";
 
-const DEFAULT_STATUS_COLORS = ["#7cc7b6", "#f6d28b", "#9fd8a6"];
+// Muted sb-themed palette (doesn't swap per theme but reads fine against any bg).
+const DEFAULT_STATUS_COLORS = ["#1e3a66", "#6b7a8c", "#3a3e44"];
 
 function isCountDataEmpty(items: CountByLabel[]) {
   return items.length === 0 || items.every((item) => item.count === 0);
@@ -30,7 +31,7 @@ export function StatusPieChart({
   height = 220,
   outerRadius = 70,
   colors = DEFAULT_STATUS_COLORS,
-  showLegend = false,
+  showLegend = true,
 }: {
   data: CountByLabel[];
   height?: number;
@@ -39,7 +40,7 @@ export function StatusPieChart({
   showLegend?: boolean;
 }) {
   if (isCountDataEmpty(data)) {
-    return <EmptyState text="No status data available yet." />;
+    return <EmptyState text="No status data yet." />;
   }
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -59,23 +60,23 @@ export function StatusPieChart({
 export function PriorityBarChart({
   data,
   height = 220,
-  color = "#83c5be",
+  color = "#1e3a66",
 }: {
   data: CountByLabel[];
   height?: number;
   color?: string;
 }) {
   if (isCountDataEmpty(data)) {
-    return <EmptyState text="No priority data available yet." />;
+    return <EmptyState text="No priority data yet." />;
   }
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="label" />
-        <YAxis allowDecimals={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--rule-faint)" />
+        <XAxis dataKey="label" stroke="var(--ink-muted)" />
+        <YAxis allowDecimals={false} stroke="var(--ink-muted)" />
         <Tooltip />
-        <Bar dataKey="count" fill={color} />
+        <Bar dataKey="count" fill={color} radius={[3, 3, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   );
@@ -84,7 +85,7 @@ export function PriorityBarChart({
 export function CompletionLineChart({
   data,
   height = 240,
-  color = "#6ba3be",
+  color = "#1e3a66",
   showLegend = true,
 }: {
   data: CompletionOverTimePoint[];
@@ -98,12 +99,12 @@ export function CompletionLineChart({
   return (
     <ResponsiveContainer width="100%" height={height}>
       <LineChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="date" />
-        <YAxis allowDecimals={false} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--rule-faint)" />
+        <XAxis dataKey="date" stroke="var(--ink-muted)" />
+        <YAxis allowDecimals={false} stroke="var(--ink-muted)" />
         <Tooltip />
         {showLegend && <Legend />}
-        <Line type="monotone" dataKey="count" stroke={color} strokeWidth={2} />
+        <Line type="monotone" dataKey="count" stroke={color} strokeWidth={2} dot={false} />
       </LineChart>
     </ResponsiveContainer>
   );

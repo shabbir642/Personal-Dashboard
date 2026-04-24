@@ -2,209 +2,211 @@
 
 import { useMemo, useState } from "react";
 
-import EmptyState from "../EmptyState";
-import { Task, TaskPriority, TaskStatus } from "../../lib/types";
+import {
+  Button,
+  Icon,
+  StatusBadge,
+  Tag,
+} from "../sb/primitives";
+import {
+  STATUS_OPTIONS,
+  dayLabel,
+  fmtTime,
+  priorityTone,
+} from "../../lib/format";
+import type { Task, TaskStatus } from "../../lib/types";
 
-type SortField = "created_at" | "title" | "priority" | "status" | "start_date" | "end_date";
-type SortDirection = "asc" | "desc";
+type StatusFilter = "all" | TaskStatus;
 
-const PAGE_SIZE = 6;
+interface FilterOpt {
+  value: StatusFilter;
+  label: string;
+  count: number;
+}
 
-const priorityWeight: Record<TaskPriority, number> = {
-  low: 1,
-  medium: 2,
-  high: 3,
-};
+interface Group {
+  key: string;
+  date: Date;
+  label: string;
+  items: Task[];
+}
+
+function groupByDay(tasks: Task[]): Group[] {
+  const map = new Map<string, Group>();
+  for (const task of tasks) {
+    const d = new Date(task.created_at);
+    if (Number.isNaN(d.getTime())) continue;
+    d.setHours(0, 0, 0, 0);
+    const key = d.toISOString();
+    if (!map.has(key)) {
+      map.set(key, { key, date: d, items: [], label: dayLabel(d) });
+    }
+    map.get(key)!.items.push(task);
+  }
+  return [...map.values()].sort(
+    (a, b) => b.date.getTime() - a.date.getTime(),
+  );
+}
 
 export interface TasksTableProps {
   tasks: Task[];
   onRowClick: (taskId: number) => void;
+  onNew: () => void;
 }
 
-export default function TasksTable({ tasks, onRowClick }: TasksTableProps) {
-  const [statusFilter, setStatusFilter] = useState<"all" | TaskStatus>("all");
-  const [priorityFilter, setPriorityFilter] = useState<"all" | TaskPriority>("all");
-  const [sortField, setSortField] = useState<SortField>("created_at");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("desc");
-  const [searchTerm, setSearchTerm] = useState("");
-  const [page, setPage] = useState(1);
+export default function TasksTable({ tasks, onRowClick, onNew }: TasksTableProps) {
+  const [filter, setFilter] = useState<StatusFilter>("all");
+  const [query, setQuery] = useState("");
 
-  const visibleTasks = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
-    const filtered = tasks.filter((task) => {
-      const matchesStatus = statusFilter === "all" || task.status === statusFilter;
-      const matchesPriority = priorityFilter === "all" || task.priority === priorityFilter;
-      const matchesSearch =
-        query.length === 0 ||
-        task.title.toLowerCase().includes(query) ||
-        (task.description || "").toLowerCase().includes(query);
-      return matchesStatus && matchesPriority && matchesSearch;
-    });
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tasks
+      .filter((t) => filter === "all" || t.status === filter)
+      .filter((t) => {
+        if (!q) return true;
+        return (
+          t.title.toLowerCase().includes(q) ||
+          (t.description || "").toLowerCase().includes(q) ||
+          t.priority.includes(q) ||
+          t.status.includes(q)
+        );
+      })
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+      );
+  }, [tasks, filter, query]);
 
-    return filtered.sort((a, b) => {
-      let value = 0;
-      if (sortField === "title") {
-        value = a.title.localeCompare(b.title);
-      } else if (sortField === "priority") {
-        value = priorityWeight[a.priority] - priorityWeight[b.priority];
-      } else if (sortField === "status") {
-        value = a.status.localeCompare(b.status);
-      } else if (sortField === "start_date") {
-        value = (a.start_date || "").localeCompare(b.start_date || "");
-      } else if (sortField === "end_date") {
-        value = (a.end_date || "").localeCompare(b.end_date || "");
-      } else {
-        value = a.created_at.localeCompare(b.created_at);
-      }
-      return sortDirection === "asc" ? value : -value;
-    });
-  }, [tasks, statusFilter, priorityFilter, searchTerm, sortField, sortDirection]);
+  const groups = useMemo(() => groupByDay(filtered), [filtered]);
 
-  const totalPages = Math.max(1, Math.ceil(visibleTasks.length / PAGE_SIZE));
-  const currentPage = Math.min(page, totalPages);
-  const paginatedTasks = useMemo(() => {
-    const start = (currentPage - 1) * PAGE_SIZE;
-    return visibleTasks.slice(start, start + PAGE_SIZE);
-  }, [visibleTasks, currentPage]);
+  const filterOpts: FilterOpt[] = [
+    { value: "all", label: "all", count: tasks.length },
+    ...STATUS_OPTIONS.map<FilterOpt>((s) => ({
+      value: s,
+      label: s,
+      count: tasks.filter((t) => t.status === s).length,
+    })),
+  ];
 
   return (
-    <>
-      <div className="header-row">
-        <h2>Tasks</h2>
-        <div className="controls-grid">
-          <label>
-            Search
+    <div className="sb-listing">
+      <div className="sb-pagehead">
+        <div>
+          <div className="sb-eyebrow">log</div>
+          <h1 className="sb-pagehead__title">all tasks</h1>
+          <p className="sb-pagehead__sub">
+            {filtered.length} of {tasks.length} task{tasks.length === 1 ? "" : "s"}
+          </p>
+        </div>
+        <div className="sb-pagehead__actions">
+          <div className="sb-search">
+            <Icon name="search" />
             <input
-              value={searchTerm}
-              placeholder="Search title/description"
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
-              }}
+              className="sb-search__input"
+              placeholder="search title, description, status…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
             />
-          </label>
-
-          <label>
-            Status Filter
-            <select
-              value={statusFilter}
-              onChange={(e) => {
-                setStatusFilter(e.target.value as "all" | TaskStatus);
-                setPage(1);
-              }}
-            >
-              <option value="all">all</option>
-              <option value="todo">todo</option>
-              <option value="in-progress">in-progress</option>
-              <option value="done">done</option>
-            </select>
-          </label>
-
-          <label>
-            Priority Filter
-            <select
-              value={priorityFilter}
-              onChange={(e) => {
-                setPriorityFilter(e.target.value as "all" | TaskPriority);
-                setPage(1);
-              }}
-            >
-              <option value="all">all</option>
-              <option value="low">low</option>
-              <option value="medium">medium</option>
-              <option value="high">high</option>
-            </select>
-          </label>
-
-          <label>
-            Sort By
-            <select value={sortField} onChange={(e) => setSortField(e.target.value as SortField)}>
-              <option value="created_at">created_at</option>
-              <option value="title">title</option>
-              <option value="priority">priority</option>
-              <option value="status">status</option>
-              <option value="start_date">start_date</option>
-              <option value="end_date">end_date</option>
-            </select>
-          </label>
-
-          <label>
-            Direction
-            <select value={sortDirection} onChange={(e) => setSortDirection(e.target.value as SortDirection)}>
-              <option value="asc">asc</option>
-              <option value="desc">desc</option>
-            </select>
-          </label>
+          </div>
+          <Button variant="primary" icon={<Icon name="plus" />} onClick={onNew}>
+            new task
+          </Button>
         </div>
       </div>
 
-      {paginatedTasks.length === 0 ? (
-        <EmptyState text="No tasks found for the current filters." />
-      ) : (
-        <>
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Title</th>
-                  <th>Description</th>
-                  <th>Status</th>
-                  <th>Priority</th>
-                  <th>Start Date</th>
-                  <th>End Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {paginatedTasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className="clickable-row"
-                    onClick={() => onRowClick(task.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") onRowClick(task.id);
-                    }}
-                  >
-                    <td>{task.title}</td>
-                    <td>{task.description || "-"}</td>
-                    <td>
-                      <span className={`status-badge status-${task.status}`}>{task.status}</span>
-                    </td>
-                    <td>
-                      <span className={`priority-pill priority-${task.priority}`}>{task.priority}</span>
-                    </td>
-                    <td>{task.start_date || "-"}</td>
-                    <td>{task.end_date || "-"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+      <div className="sb-filterbar">
+        <Icon name="filter" />
+        <div className="sb-filterbar__chips">
+          {filterOpts.map((opt) => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`sb-chip${filter === opt.value ? " is-active" : ""}`}
+              onClick={() => setFilter(opt.value)}
+            >
+              {opt.label}
+              <span className="sb-chip__count">{opt.count}</span>
+            </button>
+          ))}
+        </div>
+      </div>
 
-          <div className="pagination-row">
-            <button
-              type="button"
-              className="secondary-btn"
-              disabled={currentPage <= 1}
-              onClick={() => setPage((p) => p - 1)}
-            >
-              Prev
-            </button>
-            <span>
-              Page {currentPage} of {totalPages}
-            </span>
-            <button
-              type="button"
-              className="secondary-btn"
-              disabled={currentPage >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
-            >
-              Next
-            </button>
-          </div>
-        </>
+      {filtered.length === 0 ? (
+        <div className="sb-list-empty">
+          <p>no tasks match.</p>
+          <button
+            type="button"
+            className="sb-linkbtn"
+            onClick={() => {
+              setFilter("all");
+              setQuery("");
+            }}
+          >
+            clear filters
+          </button>
+        </div>
+      ) : (
+        <div className="sb-list">
+          {groups.map((g) => (
+            <section key={g.key}>
+              <header className="sb-list__daterow">
+                <span className="sb-list__date">{g.label}</span>
+                <span className="sb-list__rule" />
+                <span className="sb-list__daymeta">
+                  {g.items.length} task{g.items.length === 1 ? "" : "s"}
+                </span>
+              </header>
+              <ul className="sb-list__items">
+                {g.items.map((task) => (
+                  <ListRow
+                    key={task.id}
+                    task={task}
+                    onClick={() => onRowClick(task.id)}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
       )}
-    </>
+    </div>
+  );
+}
+
+function ListRow({ task, onClick }: { task: Task; onClick: () => void }) {
+  return (
+    <li
+      className="sb-row"
+      onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") onClick();
+      }}
+    >
+      <span className="sb-row__time">{fmtTime(task.created_at)}</span>
+      <span className="sb-row__body">
+        <span className="sb-row__title">{task.title}</span>
+        {task.description && (
+          <span className="sb-row__notes">{task.description}</span>
+        )}
+      </span>
+      <span className="sb-row__meta">
+        <Tag tone={priorityTone(task.priority)}>{task.priority}</Tag>
+        {(task.start_date || task.end_date) && (
+          <span className="sb-row__dur">
+            <Icon name="clock" size={11} />
+            {task.start_date || "—"}
+            {task.end_date && task.end_date !== task.start_date
+              ? ` → ${task.end_date}`
+              : ""}
+          </span>
+        )}
+        <StatusBadge status={task.status} />
+      </span>
+      <span className="sb-row__chev" aria-hidden>
+        <Icon name="chevron" />
+      </span>
+    </li>
   );
 }

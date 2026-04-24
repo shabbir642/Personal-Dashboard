@@ -2,9 +2,17 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import EmptyState from "../EmptyState";
-import LoadingState from "../LoadingState";
 import TaskForm from "./TaskForm";
+import {
+  Button,
+  Field,
+  Icon,
+  Modal,
+  ModalHeader,
+  StatusBadge,
+  Tag,
+} from "../sb/primitives";
+import { fmtRelative, priorityTone } from "../../lib/format";
 import {
   createTaskLog,
   fetchTaskById,
@@ -12,7 +20,7 @@ import {
   generateTaskAIInsight,
   updateTask,
 } from "../../lib/api";
-import {
+import type {
   CreateTaskPayload,
   Task,
   TaskAIInsight,
@@ -29,6 +37,8 @@ const INSIGHT_CATEGORIES = [
   "operations",
   "custom",
 ] as const;
+
+type Mode = "view" | "edit";
 
 const defaultLogForm: TaskLogPayload = { issue: "", resolution: null };
 
@@ -61,6 +71,7 @@ export default function TaskModal({
   const [task, setTask] = useState<Task | null>(null);
   const [insight, setInsight] = useState<TaskAIInsight | null>(null);
   const [logs, setLogs] = useState<TaskLog[]>([]);
+  const [mode, setMode] = useState<Mode>("view");
 
   const [basicForm, setBasicForm] = useState<CreateTaskPayload | null>(null);
   const [logForm, setLogForm] = useState<TaskLogPayload>(defaultLogForm);
@@ -68,8 +79,8 @@ export default function TaskModal({
   const [savingBasic, setSavingBasic] = useState(false);
   const [loadingInsight, setLoadingInsight] = useState(false);
   const [addingLog, setAddingLog] = useState(false);
-  const [insightCategory, setInsightCategory] = useState<string>("general");
-  const [customInsightCategory, setCustomInsightCategory] = useState<string>("");
+  const [insightCategory, setInsightCategory] = useState("general");
+  const [customInsightCategory, setCustomInsightCategory] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -122,9 +133,10 @@ export default function TaskModal({
         end_date: basicForm.end_date,
       });
       setTask(updated);
+      setMode("view");
       onTaskChanged();
     } catch (err) {
-      onError(err instanceof Error ? err.message : "Could not save basic task info.");
+      onError(err instanceof Error ? err.message : "Could not save task.");
     } finally {
       setSavingBasic(false);
     }
@@ -145,7 +157,6 @@ export default function TaskModal({
       onError("Please enter a custom category for deep insight.");
       return;
     }
-
     setLoadingInsight(true);
     onError(null);
     try {
@@ -186,158 +197,246 @@ export default function TaskModal({
   const parsed = insight ? parseSuggestionSections(insight.suggestions) : null;
 
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(event) => event.stopPropagation()}>
-        <div className="modal-header">
-          <h2>Task Details</h2>
-          <button type="button" className="secondary-btn" onClick={onClose}>
-            Close
-          </button>
-        </div>
+    <Modal open={true} onClose={onClose} label="task details" width={720}>
+      {loading || !task || !basicForm ? (
+        <>
+          <ModalHeader meta="task" title="loading…" onClose={onClose} />
+          <div className="sb-loading">loading task details…</div>
+        </>
+      ) : mode === "edit" ? (
+        <>
+          <ModalHeader
+            meta={`editing · #${task.id}`}
+            title="edit task"
+            onClose={() => setMode("view")}
+          />
+          <div className="sb-modal__body">
+            <TaskForm
+              value={basicForm}
+              onChange={setBasicForm}
+              onSubmit={onSaveBasicInfo}
+              onCancel={() => setMode("view")}
+              submitting={savingBasic}
+              submitLabel="save changes"
+              submittingLabel="saving…"
+              maxDescriptionLength={maxDescriptionLength}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <ModalHeader
+            meta={`task · #${task.id}`}
+            title={task.title}
+            onClose={onClose}
+          />
+          <div className="sb-modal__body">
+            <div className="sb-detail">
+              <dl className="sb-detail__grid">
+                <div className="sb-detail__cell">
+                  <dt>priority</dt>
+                  <dd>
+                    <Tag tone={priorityTone(task.priority)}>{task.priority}</Tag>
+                  </dd>
+                </div>
+                <div className="sb-detail__cell">
+                  <dt>status</dt>
+                  <dd>
+                    <StatusBadge status={task.status} />
+                  </dd>
+                </div>
+                <div className="sb-detail__cell">
+                  <dt>start date</dt>
+                  <dd>{task.start_date || "—"}</dd>
+                </div>
+                <div className="sb-detail__cell">
+                  <dt>end date</dt>
+                  <dd>{task.end_date || "—"}</dd>
+                </div>
+              </dl>
 
-        {loading || !task || !basicForm ? (
-          <LoadingState text="Loading task details..." />
-        ) : (
-          <>
-            <section className="card section-card">
-              <h3>Section 1: Basic Info</h3>
-              <TaskForm
-                value={basicForm}
-                onChange={setBasicForm}
-                onSubmit={onSaveBasicInfo}
-                submitting={savingBasic}
-                submitLabel="Save Basic Info"
-                submittingLabel="Saving..."
-                maxDescriptionLength={maxDescriptionLength}
-              />
-            </section>
+              <div className="sb-detail__notes">
+                <div className="sb-field__label">description</div>
+                {task.description ? (
+                  <p className="sb-detail__notesbody">{task.description}</p>
+                ) : (
+                  <p className="sb-detail__notesempty">no description.</p>
+                )}
+              </div>
 
-            <section className="card section-card">
-              <div className="insight-header-row">
-                <h3>Section 2: Deep Insight</h3>
-                <div className="insight-actions">
-                  <label className="insight-category-label">
-                    Focus Category
+              <div className="sb-detail__meta">
+                <span>created {fmtRelative(task.created_at)}</span>
+                <span className="sb-detail__metadot">·</span>
+                <span>id {task.id}</span>
+              </div>
+            </div>
+
+            <section className="sb-insights">
+              <header className="sb-insights__head">
+                <div>
+                  <h3 className="sb-insights__title">deep insight</h3>
+                  <div className="sb-insights__sub">
+                    70% focused on your category · 30% surrounding extras
+                  </div>
+                </div>
+                <div className="sb-insights__actions">
+                  <Field label="focus">
                     <select
+                      className="sb-input"
                       value={insightCategory}
                       onChange={(e) => setInsightCategory(e.target.value)}
                     >
-                      {INSIGHT_CATEGORIES.map((category) => (
-                        <option key={category} value={category}>
-                          {category}
+                      {INSIGHT_CATEGORIES.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
                         </option>
                       ))}
                     </select>
-                  </label>
+                  </Field>
                   {insightCategory === "custom" && (
-                    <label className="insight-category-label">
-                      Custom Category
+                    <Field label="custom">
                       <input
+                        className="sb-input"
                         value={customInsightCategory}
                         onChange={(e) => setCustomInsightCategory(e.target.value)}
-                        placeholder="e.g. data science, sales ops"
+                        placeholder="data science, sales ops…"
                       />
-                    </label>
+                    </Field>
                   )}
-                  <button
-                    type="button"
+                  <Button
+                    variant="primary"
+                    icon={<Icon name="sparkle" />}
                     onClick={() => void onGetDeepInsight()}
                     disabled={
                       loadingInsight ||
-                      (insightCategory === "custom" && !customInsightCategory.trim())
+                      (insightCategory === "custom" &&
+                        !customInsightCategory.trim())
                     }
                   >
-                    {loadingInsight ? "Generating..." : "Get Deep Insight"}
-                  </button>
+                    {loadingInsight ? "generating…" : "generate"}
+                  </Button>
                 </div>
-              </div>
-              <p className="muted insight-hint">
-                AI keeps suggestions mostly in your selected category (70%) and separates
-                surrounding-category extras (30%). Add a meaningful description before
-                generating.
-              </p>
+              </header>
 
               {insight ? (
-                <div className="ai-insight-grid">
-                  <article className="ai-insight-card">
-                    <h4>Overview</h4>
-                    <p>{insight.overview}</p>
+                <div className="sb-insights__grid">
+                  <article className="sb-insights__cell">
+                    <div className="sb-insights__celllabel">overview</div>
+                    <p className="sb-insights__cellbody">{insight.overview}</p>
                   </article>
-                  <article className="ai-insight-card">
-                    <h4>Suggestions (70%)</h4>
-                    <p>{parsed?.primary || insight.suggestions}</p>
+                  <article className="sb-insights__cell">
+                    <div className="sb-insights__celllabel">suggestions (70%)</div>
+                    <p className="sb-insights__cellbody">
+                      {parsed?.primary || insight.suggestions}
+                    </p>
                   </article>
-                  <article className="ai-insight-card">
-                    <h4>Impact</h4>
-                    <p>{insight.impact}</p>
+                  <article className="sb-insights__cell">
+                    <div className="sb-insights__celllabel">impact</div>
+                    <p className="sb-insights__cellbody">{insight.impact}</p>
                   </article>
-                  <article className="ai-insight-card">
-                    <h4>Skills Improvement</h4>
-                    <p>{insight.skills_improvement}</p>
+                  <article className="sb-insights__cell">
+                    <div className="sb-insights__celllabel">skills improvement</div>
+                    <p className="sb-insights__cellbody">{insight.skills_improvement}</p>
                   </article>
-                  <article className="ai-insight-card ai-insight-card-wide">
-                    <h4>Extras (30%)</h4>
-                    <p>{parsed?.extras || "No surrounding-category extras were returned."}</p>
+                  <article className="sb-insights__cell sb-insights__cell--wide">
+                    <div className="sb-insights__celllabel">extras (30%)</div>
+                    <p className="sb-insights__cellbody">
+                      {parsed?.extras ||
+                        "no surrounding-category extras were returned."}
+                    </p>
                   </article>
                 </div>
               ) : (
-                <EmptyState text="No deep insight yet. Click 'Get Deep Insight' to generate AI output." />
+                <p className="sb-detail__notesempty">
+                  no deep insight yet. add a description and click generate.
+                </p>
+              )}
+            </section>
+
+            <section className="sb-logs">
+              <header className="sb-logs__head">
+                <h3 className="sb-logs__title">issues & resolutions</h3>
+                <span className="sb-panel__sub">
+                  {logs.length} log{logs.length === 1 ? "" : "s"}
+                </span>
+              </header>
+
+              {logs.length > 0 && (
+                <ul className="sb-logs__list">
+                  {logs.map((log) => (
+                    <li key={log.id} className="sb-logs__item">
+                      <p className="sb-logs__row">
+                        <span className="sb-logs__label">issue</span>
+                        {log.issue}
+                      </p>
+                      <p className="sb-logs__row">
+                        <span className="sb-logs__label">resolution</span>
+                        {log.resolution || "—"}
+                      </p>
+                      <div className="sb-logs__meta">
+                        {new Date(log.created_at).toLocaleString()}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
               )}
 
-              <div className="logs-section">
-                <h4>Issues Faced & Resolutions</h4>
-                {logs.length === 0 ? (
-                  <EmptyState text="No issues logged yet." />
-                ) : (
-                  <div className="log-list">
-                    {logs.map((log) => (
-                      <article className="log-item" key={log.id}>
-                        <p>
-                          <strong>Issue:</strong> {log.issue}
-                        </p>
-                        <p>
-                          <strong>Resolution:</strong> {log.resolution || "-"}
-                        </p>
-                        <p className="meta">{new Date(log.created_at).toLocaleString()}</p>
-                      </article>
-                    ))}
-                  </div>
-                )}
-
-                <form className="form-grid" onSubmit={onAddLog}>
-                  <label>
-                    New Issue
-                    <textarea
-                      value={logForm.issue}
-                      onChange={(e) => setLogForm((p) => ({ ...p, issue: e.target.value }))}
-                      rows={2}
-                      required
-                    />
-                  </label>
-
-                  <label>
-                    Resolution
-                    <textarea
-                      value={logForm.resolution || ""}
-                      onChange={(e) =>
-                        setLogForm((p) => ({
-                          ...p,
-                          resolution: e.target.value === "" ? null : e.target.value,
-                        }))
-                      }
-                      rows={2}
-                    />
-                  </label>
-
-                  <button type="submit" disabled={addingLog}>
-                    {addingLog ? "Adding..." : "Add Task Log"}
-                  </button>
-                </form>
-              </div>
+              <form className="sb-logs__form" onSubmit={onAddLog}>
+                <Field label="new issue">
+                  <textarea
+                    className="sb-input sb-input--ta"
+                    value={logForm.issue}
+                    onChange={(e) =>
+                      setLogForm((p) => ({ ...p, issue: e.target.value }))
+                    }
+                    rows={2}
+                    required
+                  />
+                </Field>
+                <Field label="resolution" hint="optional">
+                  <textarea
+                    className="sb-input sb-input--ta"
+                    value={logForm.resolution || ""}
+                    onChange={(e) =>
+                      setLogForm((p) => ({
+                        ...p,
+                        resolution: e.target.value === "" ? null : e.target.value,
+                      }))
+                    }
+                    rows={2}
+                  />
+                </Field>
+                <div>
+                  <Button
+                    variant="secondary"
+                    type="submit"
+                    icon={<Icon name="plus" />}
+                    disabled={addingLog}
+                  >
+                    {addingLog ? "adding…" : "add log"}
+                  </Button>
+                </div>
+              </form>
             </section>
-          </>
-        )}
-      </div>
-    </div>
+          </div>
+
+          <footer className="sb-modal__footer">
+            <div />
+            <div className="sb-modal__footer-right">
+              <Button variant="secondary" onClick={onClose}>
+                close
+              </Button>
+              <Button
+                variant="primary"
+                icon={<Icon name="edit" />}
+                onClick={() => setMode("edit")}
+              >
+                edit
+              </Button>
+            </div>
+          </footer>
+        </>
+      )}
+    </Modal>
   );
 }
