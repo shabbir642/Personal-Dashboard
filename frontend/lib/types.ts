@@ -81,3 +81,16 @@ export interface CompletionOverTimePoint {
   date: string;
   count: number;
 }
+
+export interface TaskListPage {
+  items: Task[];
+  total: number;
+  skip: number;
+  limit: number;
+}
+
+export interface AppConfig {
+  task_description_min_length: number;
+  task_description_max_length: number;
+  ai_enrichment_enabled: boolean;
+}

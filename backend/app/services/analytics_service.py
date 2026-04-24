@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import func
 from sqlalchemy.orm import Session
@@ -30,15 +30,23 @@ def get_task_count_by_priority(db: Session):
 
 
 def get_task_completion_over_time(db: Session):
-    done_tasks = db.query(Task).filter(Task.status == TaskStatus.DONE).all()
+    # end_date when set, else the date portion of created_at. Aggregated in SQL.
+    day_expr = func.coalesce(Task.end_date, func.date(Task.created_at)).label("day")
+    rows = (
+        db.query(day_expr, func.count(Task.id))
+        .filter(Task.status == TaskStatus.DONE)
+        .group_by(day_expr)
+        .order_by(day_expr)
+        .all()
+    )
 
-    completion_counts = {}
-    for task in done_tasks:
-        completion_day = task.end_date or date(task.created_at.year, task.created_at.month, task.created_at.day)
-        completion_counts[completion_day] = completion_counts.get(completion_day, 0) + 1
+    def _to_date(value):
+        if isinstance(value, date):
+            return value
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, str):
+            return date.fromisoformat(value)
+        return value
 
-    points = [
-        {"date": point_date, "count": completion_counts[point_date]}
-        for point_date in sorted(completion_counts.keys())
-    ]
-    return points
+    return [{"date": _to_date(day), "count": int(count)} for day, count in rows if day is not None]

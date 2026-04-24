@@ -11,15 +11,16 @@ type ThemeContextValue = {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>("light");
+function readInitialTheme(): Theme {
+  if (typeof document === "undefined") return "light";
+  const attr = document.documentElement.getAttribute("data-theme");
+  if (attr === "light" || attr === "dark") return attr;
+  const stored = window.localStorage.getItem("task_dashboard_theme");
+  return stored === "dark" ? "dark" : "light";
+}
 
-  useEffect(() => {
-    const storedTheme = window.localStorage.getItem("task_dashboard_theme") as Theme | null;
-    if (storedTheme === "light" || storedTheme === "dark") {
-      setTheme(storedTheme);
-    }
-  }, []);
+export function ThemeProvider({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<Theme>(readInitialTheme);
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);

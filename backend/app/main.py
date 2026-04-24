@@ -8,10 +8,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.routes.analytics import router as analytics_router
+from app.api.routes.config import router as config_router
 from app.api.routes.task_ai_insights import router as task_ai_insights_router
 from app.api.routes.task_details import router as task_details_router
 from app.api.routes.task_logs import router as task_logs_router
 from app.api.routes.tasks import router as tasks_router
+from app.core.config import CORS_ALLOW_ORIGINS
 from app.core.database import Base, engine
 from app.core.logging import configure_logging
 import app.models  # noqa: F401
@@ -25,8 +27,8 @@ app = FastAPI(title="Task Dashboard API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=CORS_ALLOW_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -109,3 +111,4 @@ app.include_router(task_ai_insights_router, prefix="/api")
 app.include_router(task_details_router, prefix="/api")
 app.include_router(task_logs_router, prefix="/api")
 app.include_router(analytics_router, prefix="/api")
+app.include_router(config_router, prefix="/api")

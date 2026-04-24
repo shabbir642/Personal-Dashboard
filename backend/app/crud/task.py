@@ -15,8 +15,17 @@ def create_task(db: Session, task: TaskCreate) -> Task:
     return db_task
 
 
-def get_tasks(db: Session) -> list[Task]:
-    return db.query(Task).options(selectinload(Task.ai_insight)).order_by(Task.created_at.desc()).all()
+def get_tasks(db: Session, skip: int = 0, limit: int = 50) -> tuple[list[Task], int]:
+    base = db.query(Task)
+    total = base.count()
+    items = (
+        base.options(selectinload(Task.ai_insight))
+        .order_by(Task.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
+    )
+    return items, total
 
 
 def get_task_by_id(db: Session, task_id: int) -> Optional[Task]:

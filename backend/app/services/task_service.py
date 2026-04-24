@@ -9,8 +9,8 @@ def create_task_service(db: Session, task: TaskCreate):
     return create_task(db, task)
 
 
-def get_tasks_service(db: Session):
-    return get_tasks(db)
+def get_tasks_service(db: Session, skip: int = 0, limit: int = 50):
+    return get_tasks(db, skip=skip, limit=limit)
 
 
 def get_task_or_404(db: Session, task_id: int):

@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.task import TaskCreate, TaskResponse, TaskUpdate
+from app.schemas.task import TaskCreate, TaskListResponse, TaskResponse, TaskUpdate
+from app.services.task_ai_insight_service import enrich_task_in_background
 from app.services.task_service import (
     create_task_service,
     delete_task_service,
@@ -15,13 +16,24 @@ router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
-def create_task_endpoint(task: TaskCreate, db: Session = Depends(get_db)):
-    return create_task_service(db, task)
+def create_task_endpoint(
+    task: TaskCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    db_task = create_task_service(db, task)
+    background_tasks.add_task(enrich_task_in_background, db_task.id, task.tags)
+    return db_task
 
 
-@router.get("", response_model=list[TaskResponse])
-def get_tasks_endpoint(db: Session = Depends(get_db)):
-    return get_tasks_service(db)
+@router.get("", response_model=TaskListResponse)
+def get_tasks_endpoint(
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+):
+    items, total = get_tasks_service(db, skip=skip, limit=limit)
+    return {"items": items, "total": total, "skip": skip, "limit": limit}
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
