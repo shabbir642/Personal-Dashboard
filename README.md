@@ -17,9 +17,11 @@ personal-task-dashboard/
 
 ## Backend Setup
 
+Requires Python 3.10–3.13. Python 3.14 is not yet supported by `pydantic-core==2.33.2`.
+
 ```bash
 cd backend
-python3 -m venv .venv
+python3.10 -m venv .venv   # or any 3.10–3.13 interpreter
 source .venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env

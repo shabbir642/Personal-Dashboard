@@ -1,3 +1,6 @@
 .venv/
 task_dashboard.db
 .env
+__pycache__/
+*.pyc
+.python-version
